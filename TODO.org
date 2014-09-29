@@ -1,4 +1,5 @@
 * Issues & ideas
+  + *[gene]* Check support for the flag :append
   + *[algs]* Add snappy compression based on pure Java implementation
     https://github.com/dain/snappy
     http://mvnrepository.com/artifact/org.iq80.snappy/snappy/0.3

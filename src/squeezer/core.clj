@@ -10,7 +10,9 @@
   ^{:author "Stuart Sierra, Chas Emerick, Stuart Halloway",
      :doc "This file defines polymorphic I/O utility functions for Clojure."}
     squeezer.core
-    (:require clojure.string)
+    (:refer-clojure :exclude [assert])
+    (:require clojure.string
+              [pjstadig.assertions :refer [assert]])
     (:import
      (java.io Reader InputStream InputStreamReader PushbackReader
               BufferedReader File OutputStream
@@ -89,16 +91,16 @@
   (make-raw-output-stream [x opts]
     "Creates a raw OutputStream. See also IORawFactory docs."))
 
-(defn ^:private make-pre-buffered-output-stream [^OutputStream x opts]
-  (if-let [b (:pre-buffer opts) ]
+(defn ^:private make-buffered-output-stream [^OutputStream x b ]
+  (if b
     (if (= b true)
-      (.BufferedInputStream x)
-      (.BufferedInputStream x b))
+      (BufferedOutputStream. x)
+      (BufferedOutputStream. x b))
     x))
 
 (defn ^:private make-compressed-output-stream
   [^OutputStream is opts]
-  (case (:compression opts)
+  (case (:compr opts)
     "gzip"
        (if-let [ bs (:gzip-buffer opts) ]
          (GZIPOutputStream. is bs)
@@ -110,13 +112,13 @@
     nil is
     (throw  (IllegalArgumentException.
               (str "Unknown compression scheme "
-                    (:compression opts) " in")))))
+                    (:compr opts) " in")))))
 
 (defn ^:private make-writer [^OutputStream x opts]
-  (OutputStreamWriter. x))
+  (OutputStreamWriter. x (:encoding opts)))
 
 (defn ^:private make-buffered-writer [^Writer x opts ]
-  (if-let [ b (:post-buffer opts) ]
+  (if-let [ b (:post-compr-buffer opts) ]
     (if (= b true)
       (BufferedWriter. x)
       (BufferedWriter. x b))
@@ -139,48 +141,58 @@
   (let [
          opts
            (merge
-             {:encoding "UTF-8" :buffered true :append false }
+             {:encoding "UTF-8" :pre-compr-buff true :append false }
              (apply hash-map opts-vec))
         ]
     (-> x
        (make-raw-output-stream opts)
-       (make-pre-buffered-output-stream opts)
+       (make-buffered-output-stream (:pre-compr-buff opts))
        (make-compressed-output-stream opts)
        (make-writer opts)
        (make-buffered-writer opts))))
 
-(comment
-(defn ^InputStream input-stream
-  "Attempts to coerce its argument into an open java.io.InputStream.
-   Default implementations always return a java.io.BufferedInputStream.
+(defn ^OutputStream output-stream
+  "Attempts to coerce its argument into an open java.io.OutputStream.
+   Default implementations always return a java.io.BufferedOutputStream.
 
    Default implementations are defined for OutputStream, File, URI, URL,
-   Socket, byte array, and String arguments.
+   Socket, and String arguments.
 
    If the argument is a String, it tries to resolve it first as a URI, then
    as a local file name.  URIs with a 'file' protocol are converted to
    local file names.
 
-   Should be used inside with-open to ensure the InputStream is properly
-   closed."
-  [x & opts]
-  (make-input-stream x (when opts (apply hash-map opts)))))
+   Should be used inside with-open to ensure the OutputStream is
+   properly closed."
+
+  [x & opts-vec]
+  (let [
+         opts
+           (merge
+             {:pre-compr-buff false :post-compr-buff true :append false }
+             (apply hash-map opts-vec))
+        ]
+    (-> x
+       (make-raw-output-stream opts)
+       (make-buffered-output-stream (:pre-compr-buff opts))
+       (make-compressed-output-stream opts)
+       (make-buffered-output-stream (:post-compr-buff opts)))))
 
 ;; Good notes on buffered stream performance
 ;;
 ;; http://stackoverflow.com/questions/1082320/what-order-should-i-use-gzipoutputstream-and-bufferedoutputstream
 ;; http://java-performance.info/java-io-bufferedinputstream-and-java-util-zip-gzipinputstream/
 
-(defn ^:private make-pre-buffered-input-stream [ ^InputStream x opts]
-  (if-let [b (:pre-buffer opts) ]
+(defn ^:private make-buffered-input-stream [ ^InputStream x b]
+  (if b
     (if (= b true)
-      (.BufferedInputStream x)
-      (.BufferedInputStream x b))
+      (BufferedInputStream. x)
+      (BufferedInputStream. x b))
     x))
 
 (defn ^:private make-compressed-input-stream
   [ ^InputStream is opts]
-  (case (:compression opts)
+  (case (:compr opts)
     "gzip"
        (if-let [ bs (:gzip-buffer opts) ]
          (GZIPInputStream. is bs)
@@ -192,13 +204,13 @@
     nil is
     (throw  (IllegalArgumentException.
               (str "Unknown compression scheme "
-                    (:compression opts) " in")))))
+                    (:compr opts) " in")))))
 
 (defn ^:private make-reader [ ^InputStream x opts]
-  (InputStreamReader. x))
+  (InputStreamReader. x (:encoding opts)))
 
 (defn ^:private make-buffered-reader [ ^Reader x opts]
-  (if-let [ b (:post-buffer opts) ]
+  (if-let [ b (:post-compr-buffer opts) ]
     (if (= b true)
       (BufferedReader. x)
       (BufferedReader. x b))
@@ -220,40 +232,59 @@
    closed.
 
    Allowed options:
-   :compression
-   :pre-buffer
+   :encoding
+   :append
+   :compr
+   :pre-compr-buffer
    :gzip-buffer
-   :post-buffer"
+   :post-compr-buffer"
   [x & opts-vec]
   (let [
          opts
            (merge
-             {:encoding "UTF-8" :buffered true :append false }
+             {:encoding "UTF-8" :pre-compr-buffer true :post-compr-buffer false :append false }
              (apply hash-map opts-vec))
         ]
     (-> x
        (make-raw-input-stream opts)
-       (make-pre-buffered-input-stream opts)
+       (make-buffered-input-stream (:pre-comp-buffer opts))
        (make-compressed-input-stream opts)
        (make-reader opts)
        (make-buffered-reader opts))))
 
-(defn ^OutputStream output-stream
-  "Attempts to coerce its argument into an open java.io.OutputStream.
-   Default implementations always return a java.io.BufferedOutputStream.
+(defn ^InputStream input-stream
+  "Attempts to coerce its argument into an open java.io.InputStream.
+   Default implementations always return a java.io.BufferedInputStream.
 
    Default implementations are defined for OutputStream, File, URI, URL,
-   Socket, and String arguments.
+   Socket, byte array, and String arguments.
 
    If the argument is a String, it tries to resolve it first as a URI, then
    as a local file name.  URIs with a 'file' protocol are converted to
    local file names.
 
-   Should be used inside with-open to ensure the OutputStream is
-   properly closed."
+   Should be used inside with-open to ensure the InputStream is properly
+   closed.
 
-  [x & opts]
-  (make-raw-output-stream x (when opts (apply hash-map opts))))
+   Allowed options:
+   :encoding
+   :append
+   :compr
+   :pre-compr-buffer
+   :gzip-buffer
+   :post-compr-buffer"
+  [x & opts-vec]
+  (let [
+         opts
+           (merge
+             {:pre-compr-buff false :post-compr-buff true :append false }
+             (apply hash-map opts-vec))
+        ]
+      (-> x
+       (make-raw-input-stream opts)
+       (make-buffered-input-stream (:pre-compr-buffer opts))
+       (make-compressed-input-stream opts)
+       (make-buffered-input-stream (:post-compr-buffer opts)))))
 
 (def default-streams-impl
   { :make-raw-input-stream
@@ -267,14 +298,6 @@
 
 (defmacro ^:private report [ s form ]
   `(do (println ~s) ~form))
-
-(defn- inputstream->reader
-  [^InputStream is opts]
-  (InputStreamReader. is (:encoding opts)))
-
-(defn- outputstream->writer
-  [^OutputStream os opts]
-  (OutputStreamWriter. os (:encoding opts)))
 
 (extend InputStream
   IORawFactory

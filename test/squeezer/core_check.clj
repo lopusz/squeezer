@@ -16,11 +16,11 @@
               test-fname "round_trip.test"
               _
                 (spit
-                  (writer test-fname :compression compr)
+                  (writer test-fname :compr compr)
                   doc)
               doc*
                 (slurp
-                  (reader test-fname :compression compr))
+                  (reader test-fname :compr compr))
               _ (io/delete-file test-fname true)
             ]
          (= doc doc*))))
@@ -45,9 +45,9 @@
               test-fname-plain "compress_plain.test"
               test-fname-compressed "compress_compressed.test"
               _
-                (spit (writer test-fname-plain :compression false) doc)
+                (spit (writer test-fname-plain :compr false) doc)
               _ (spit
-                  (writer test-fname-compressed :compression compr)
+                  (writer test-fname-compressed :compr compr)
                   doc)
               size-plain (.length (File. test-fname-plain))
               size-compressed (.length (File. test-fname-compressed))

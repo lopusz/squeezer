@@ -22,6 +22,7 @@
 
     ;; Runtime assertions
     [pjstadig/assertions "0.1.0"]
+    [prismatic/schema "0.3.0"]
     [org.apache.commons/commons-compress "1.8.1"] 
     [org.tukaani/xz "1.5"]]
   
