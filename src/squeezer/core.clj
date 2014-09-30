@@ -1,3 +1,4 @@
+
 ;   Copyright (c) Rich Hickey. All rights reserved.
 ;   The use and distribution terms for this software are covered by the
 ;   Eclipse Public License 1.0 (http://opensource.org/licenses/eclipse-1.0.php)
@@ -11,8 +12,8 @@
      :doc "This file defines polymorphic I/O utility functions for Clojure."}
     squeezer.core
     (:refer-clojure :exclude [assert])
-    (:require clojure.string
-              [pjstadig.assertions :refer [assert]]
+    (:require [pjstadig.assertions :refer [assert]]
+              [clojure.string :as str]
               [schema.core :as sm])
     (:import
      (java.io Reader InputStream InputStreamReader PushbackReader
@@ -33,6 +34,10 @@
 (defmacro ^:private sassert [ schema form ]
   `(let [ res# (sm/check ~schema ~form) ]
      (assert (nil? res#) (pr-str res#))))
+
+(defmacro ^:private report [ s form ]
+  `(do (println ~s) ~form))
+
 
 (def
     ^{:doc "Type object for a Java primitive byte array."
@@ -96,13 +101,107 @@
   (make-raw-output-stream [x opts]
     "Creates a raw OutputStream. See also IORawFactory docs."))
 
-(def BufferSchema
+(def ^:private default-streams-impl
+  { :make-raw-input-stream
+      (fn [x opts]
+        (throw (IllegalArgumentException.
+                 (str "Cannot open <" (pr-str x) "> as an InputStream."))))
+    :make-raw-output-stream
+      (fn [x opts]
+        (throw (IllegalArgumentException.
+                 (str "Cannot open <" (pr-str x) "> as an OutputStream."))))})
+
+(extend InputStream
+  IORawFactory
+  (assoc default-streams-impl
+    :make-raw-input-stream
+      (fn [x opts] x)))
+
+(extend OutputStream
+  IORawFactory
+  (assoc default-streams-impl
+    :make-raw-output-stream
+      (fn [x opts] x)))
+
+(extend File
+  IORawFactory
+  (assoc default-streams-impl
+    :make-raw-input-stream
+      (fn [^File x opts] (FileInputStream. x))
+    :make-raw-output-stream
+      (fn [^File x opts]
+         (FileOutputStream. x (:append opts)))))
+
+(extend URL
+  IORawFactory
+  (assoc default-streams-impl
+    :make-raw-input-stream
+      (fn [^URL x opts]
+         (if (= "file" (.getProtocol x))
+           (FileInputStream. (as-file x))
+           (.openStream x)))
+    :make-raw-output-stream
+      (fn [^URL x opts]
+         (if (= "file" (.getProtocol x))
+           (make-raw-output-stream (as-file x) opts)
+             (throw (IllegalArgumentException.
+             (str "Can not write to non-file URL <" x ">")))))))
+
+(extend URI
+  IORawFactory
+  (assoc default-streams-impl
+    :make-raw-input-stream
+      (fn [^URI x opts] (make-raw-input-stream (.toURL x) opts))
+    :make-raw-output-stream
+      (fn [^URI x opts] (make-raw-output-stream (.toURL x) opts))))
+
+(extend String
+  IORawFactory
+  (assoc default-streams-impl
+    :make-raw-input-stream
+      (fn [^String x opts]
+         (try
+            (make-raw-input-stream (URL. x) opts)
+            (catch MalformedURLException e
+              (make-raw-input-stream (File. x) opts))))
+    :make-raw-output-stream
+      (fn [^String x opts]
+         (try
+            (make-raw-output-stream (URL. x) opts)
+            (catch MalformedURLException err
+              (make-raw-output-stream (File. x) opts))))))
+
+(extend Socket
+  IORawFactory
+  (assoc default-streams-impl
+    :make-raw-input-stream
+      (fn [^Socket x opts] (.getInputStream x))
+    :make-raw-output-stream
+      (fn [^Socket x opts] (.getOutputStream x))))
+
+(extend byte-array-type
+  IORawFactory
+  (assoc default-streams-impl
+    :make-raw-input-stream
+      (fn [x opts] (ByteArrayInputStream. x))))
+;
+; (extend char-array-type
+;  IORawFactory
+;   (assoc default-streams-impl
+;     :make-reader
+;      (fn [x opts] (CharArrayReader. x))))
+
+(extend Object
+  IORawFactory
+  default-streams-impl)
+
+(def ^:private BufferSchema
   (sm/either (sm/enum nil false true) sm/Int))
 
-(def ComprSchema
+(def ^:private ComprSchema
   (sm/enum "gzip" "bzip2" "xz" "none" false nil))
 
-(def InputStreamOptsSchema
+(def ^:private InputStreamOptsSchema
   { (sm/optional-key :compr)
       ComprSchema
     (sm/optional-key :pre-compr-buffer)
@@ -112,13 +211,13 @@
     (sm/optional-key :gzip-buffer)
       BufferSchema})
 
-(def OutputStreamOptsSchema
+(def ^:private OutputStreamOptsSchema
   (assoc InputStreamOptsSchema (sm/optional-key :append) sm/Bool))
 
-(def ReaderOptsSchema
+(def ^:private ReaderOptsSchema
   (assoc InputStreamOptsSchema (sm/optional-key :encoding) sm/Str))
 
-(def WriterOptsSchema
+(def ^:private WriterOptsSchema
   (assoc ReaderOptsSchema (sm/optional-key :append) sm/Bool))
 
 (defn ^:private make-buffered-output-stream [^OutputStream x b]
@@ -279,19 +378,44 @@
    :gzip-buffer
    :post-compr-buffer"
   [x & opts-vec]
-  (let [
-         opts
-           (merge
-             {:encoding "UTF-8" :pre-compr-buffer true :post-compr-buffer false }
-             (apply hash-map opts-vec))
+  (if (instance? java.io.Reader x)
+    x
+    (let [
+          opts
+            (merge
+              {:encoding "UTF-8" :pre-compr-buffer true
+               :post-compr-buffer false }
+              (apply hash-map opts-vec))
           _ (sassert ReaderOptsSchema opts)
         ]
-    (-> x
-       (make-raw-input-stream opts)
-       (make-buffered-input-stream (:pre-comp-buffer opts))
-       (make-compressed-input-stream opts)
-       (make-reader opts)
-       (make-buffered-reader opts))))
+      (-> x
+        (make-raw-input-stream opts)
+        (make-buffered-input-stream (:pre-comp-buffer opts))
+        (make-compressed-input-stream opts)
+        (make-reader opts)
+        (make-buffered-reader opts)))))
+
+(defn ^:private get-ext [ ^String s ]
+  (last (str/split s #"\.")))
+
+(defn ^:private infer-compr-vec [ x ]
+  (case (get-ext (.toString x))
+    "gz" [ :compr "gzip" ]
+    "bz2" [ :compr "bzip2"]
+    "xz"  [ :compr "xz"]
+     [ :compr "none"]))
+
+(defn ^Reader reader-compr [ x & opts-vec ]
+    (if (and
+          (not (contains? (into #{} opts-vec) :compr))
+          (contains?
+             #{ java.net.URL java.net.URI java.io.File java.lang.String}
+             (type x)))
+      (apply reader x (concat opts-vec (infer-compr-vec x)))
+      (apply reader x opts-vec)))
+
+(defn slurp-compr [x & opts-vec]
+  (slurp (apply reader-compr x opts-vec)))
 
 (defn ^InputStream input-stream
   "Attempts to coerce its argument into an open java.io.InputStream.
@@ -308,12 +432,12 @@
    closed.
 
    Allowed options:
-   :encoding
-   :append
-   :compr
-   :pre-compr-buffer
-   :gzip-buffer
-   :post-compr-buffer"
+
+   + `:append`
+   + `:compr`
+   + `:pre-compr-buffer`
+   + `:gzip-buffer`
+   + `:post-compr-buffer`"
   [x & opts-vec]
   (let [
          opts
@@ -327,103 +451,3 @@
        (make-buffered-input-stream (:pre-compr-buffer opts))
        (make-compressed-input-stream opts)
        (make-buffered-input-stream (:post-compr-buffer opts)))))
-
-(def default-streams-impl
-  { :make-raw-input-stream
-      (fn [x opts]
-        (throw (IllegalArgumentException.
-                 (str "Cannot open <" (pr-str x) "> as an InputStream."))))
-    :make-raw-output-stream
-      (fn [x opts]
-        (throw (IllegalArgumentException.
-                 (str "Cannot open <" (pr-str x) "> as an OutputStream."))))})
-
-(defmacro ^:private report [ s form ]
-  `(do (println ~s) ~form))
-
-(extend InputStream
-  IORawFactory
-  (assoc default-streams-impl
-    :make-raw-input-stream
-      (fn [x opts]
-        (report
-          "make-input-stream for InputStream (identity)"
-          x))))
-
-(extend OutputStream
-  IORawFactory
-  (assoc default-streams-impl
-    :make-raw-output-stream
-      (fn [x opts] x)))
-
-(extend File
-  IORawFactory
-  (assoc default-streams-impl
-    :make-raw-input-stream
-      (fn [^File x opts] (FileInputStream. x))
-    :make-raw-output-stream
-      (fn [^File x opts]
-         (FileOutputStream. x (:append opts)))))
-
-(extend URL
-  IORawFactory
-  (assoc default-streams-impl
-    :make-raw-input-stream
-      (fn [^URL x opts]
-         (if (= "file" (.getProtocol x))
-           (FileInputStream. (as-file x))
-           (.openStream x)) opts)
-    :make-raw-output-stream
-      (fn [^URL x opts]
-         (if (= "file" (.getProtocol x))
-           (make-raw-output-stream (as-file x) opts)
-             (throw (IllegalArgumentException.
-             (str "Can not write to non-file URL <" x ">")))))))
-
-(extend URI
-  IORawFactory
-  (assoc default-streams-impl
-    :make-raw-input-stream
-      (fn [^URI x opts] (make-raw-input-stream (.toURL x) opts))
-    :make-raw-output-stream
-      (fn [^URI x opts] (make-raw-output-stream (.toURL x) opts))))
-
-(extend String
-  IORawFactory
-  (assoc default-streams-impl
-    :make-raw-input-stream
-      (fn [^String x opts]
-         (try
-            (make-raw-input-stream (URL. x) opts)
-            (catch MalformedURLException e
-              (make-raw-input-stream (File. x) opts))))
-    :make-raw-output-stream
-      (fn [^String x opts]
-         (try
-            (make-raw-output-stream (URL. x) opts)
-            (catch MalformedURLException err
-              (make-raw-output-stream (File. x) opts))))))
-
-(extend Socket
-  IORawFactory
-  (assoc default-streams-impl
-    :make-raw-input-stream
-      (fn [^Socket x opts] (.getInputStream x))
-    :make-raw-output-stream
-      (fn [^Socket x opts] (.getOutputStream x))))
-
-(extend byte-array-type
-  IORawFactory
-  (assoc default-streams-impl
-    :make-raw-input-stream
-      (fn [x opts] (ByteArrayInputStream. x))))
-;
-; (extend char-array-type
-;  IORawFactory
-;   (assoc default-streams-impl
-;     :make-reader
-;      (fn [x opts] (CharArrayReader. x))))
-
-(extend Object
-  IORawFactory
-  default-streams-impl)
