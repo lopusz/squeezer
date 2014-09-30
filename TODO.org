@@ -1,9 +1,9 @@
 * Issues & ideas
   + *[gene]* Check support for the flag :append
+  + *[gene]* Create benchmarks to check the influence of post/pre buffering
   + *[algs]* Add snappy compression based on pure Java implementation
     https://github.com/dain/snappy
     http://mvnrepository.com/artifact/org.iq80.snappy/snappy/0.3
   + *[algs]* Add lz4 compression
 
 * Done
-  + *[topic]* Closed issue.
