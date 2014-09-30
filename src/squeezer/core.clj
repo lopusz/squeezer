@@ -12,7 +12,8 @@
     squeezer.core
     (:refer-clojure :exclude [assert])
     (:require clojure.string
-              [pjstadig.assertions :refer [assert]])
+              [pjstadig.assertions :refer [assert]]
+              [schema.core :as sm])
     (:import
      (java.io Reader InputStream InputStreamReader PushbackReader
               BufferedReader File OutputStream
@@ -28,6 +29,10 @@
          bzip2.BZip2CompressorOutputStream
          xz.XZCompressorInputStream
          xz.XZCompressorOutputStream)))
+
+(defmacro ^:private sassert [ schema form ]
+  `(let [ res# (sm/check ~schema ~form) ]
+     (assert (nil? res#) (pr-str res#))))
 
 (def
     ^{:doc "Type object for a Java primitive byte array."
@@ -91,7 +96,33 @@
   (make-raw-output-stream [x opts]
     "Creates a raw OutputStream. See also IORawFactory docs."))
 
-(defn ^:private make-buffered-output-stream [^OutputStream x b ]
+(def BufferSchema
+  (sm/either (sm/enum nil false true) sm/Int))
+
+(def ComprSchema
+  (sm/enum "gzip" "bzip2" "xz" "none" false nil))
+
+(def InputStreamOptsSchema
+  { (sm/optional-key :compr)
+      ComprSchema
+    (sm/optional-key :pre-compr-buffer)
+      BufferSchema
+    (sm/optional-key :post-compr-buffer)
+      BufferSchema
+    (sm/optional-key :gzip-buffer)
+      BufferSchema})
+
+(def OutputStreamOptsSchema
+  (assoc InputStreamOptsSchema (sm/optional-key :append) sm/Bool))
+
+(def ReaderOptsSchema
+  (assoc InputStreamOptsSchema (sm/optional-key :encoding) sm/Str))
+
+(def WriterOptsSchema
+  (assoc ReaderOptsSchema (sm/optional-key :append) sm/Bool))
+
+(defn ^:private make-buffered-output-stream [^OutputStream x b]
+  (sassert BufferSchema b)
   (if b
     (if (= b true)
       (BufferedOutputStream. x)
@@ -100,6 +131,7 @@
 
 (defn ^:private make-compressed-output-stream
   [^OutputStream is opts]
+  (sassert WriterOptsSchema opts)
   (case (:compr opts)
     "gzip"
        (if-let [ bs (:gzip-buffer opts) ]
@@ -115,9 +147,11 @@
                     (:compr opts) " in")))))
 
 (defn ^:private make-writer [^OutputStream x opts]
+  (sassert WriterOptsSchema opts)
   (OutputStreamWriter. x (:encoding opts)))
 
 (defn ^:private make-buffered-writer [^Writer x opts ]
+  (sassert WriterOptsSchema opts)
   (if-let [ b (:post-compr-buffer opts) ]
     (if (= b true)
       (BufferedWriter. x)
@@ -141,8 +175,9 @@
   (let [
          opts
            (merge
-             {:encoding "UTF-8" :pre-compr-buff true :append false }
+             {:encoding "UTF-8" :pre-compr-buffer true :append false }
              (apply hash-map opts-vec))
+         _ (sassert WriterOptsSchema opts)
         ]
     (-> x
        (make-raw-output-stream opts)
@@ -171,6 +206,7 @@
            (merge
              {:pre-compr-buff false :post-compr-buff true :append false }
              (apply hash-map opts-vec))
+         _   (sassert OutputStreamOptsSchema opts)
         ]
     (-> x
        (make-raw-output-stream opts)
@@ -184,6 +220,7 @@
 ;; http://java-performance.info/java-io-bufferedinputstream-and-java-util-zip-gzipinputstream/
 
 (defn ^:private make-buffered-input-stream [ ^InputStream x b]
+  (sassert BufferSchema b)
   (if b
     (if (= b true)
       (BufferedInputStream. x)
@@ -192,6 +229,7 @@
 
 (defn ^:private make-compressed-input-stream
   [ ^InputStream is opts]
+  (sassert ReaderOptsSchema opts)
   (case (:compr opts)
     "gzip"
        (if-let [ bs (:gzip-buffer opts) ]
@@ -207,9 +245,11 @@
                     (:compr opts) " in")))))
 
 (defn ^:private make-reader [ ^InputStream x opts]
+  (sassert ReaderOptsSchema opts)
   (InputStreamReader. x (:encoding opts)))
 
 (defn ^:private make-buffered-reader [ ^Reader x opts]
+  (sassert ReaderOptsSchema opts)
   (if-let [ b (:post-compr-buffer opts) ]
     (if (= b true)
       (BufferedReader. x)
@@ -242,8 +282,9 @@
   (let [
          opts
            (merge
-             {:encoding "UTF-8" :pre-compr-buffer true :post-compr-buffer false :append false }
+             {:encoding "UTF-8" :pre-compr-buffer true :post-compr-buffer false }
              (apply hash-map opts-vec))
+          _ (sassert ReaderOptsSchema opts)
         ]
     (-> x
        (make-raw-input-stream opts)
@@ -279,6 +320,7 @@
            (merge
              {:pre-compr-buff false :post-compr-buff true :append false }
              (apply hash-map opts-vec))
+          _ (sassert InputStreamOptsSchema opts)
         ]
       (-> x
        (make-raw-input-stream opts)
