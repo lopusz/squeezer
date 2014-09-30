@@ -38,7 +38,6 @@
 (defmacro ^:private report [ s form ]
   `(do (println ~s) ~form))
 
-
 (def
     ^{:doc "Type object for a Java primitive byte array."
       :private true
@@ -55,7 +54,7 @@
   (^{:tag java.io.File } as-file [x] "Coerce argument to a file.")
   (^{:tag java.net.URL } as-url [x] "Coerce argument to a URL."))
 
-(defn- escaped-utf8-urlstring->str [s]
+(defn ^:private escaped-utf8-urlstring->str [s]
   (-> (clojure.string/replace s "+" (URLEncoder/encode "+" "UTF-8"))
       (URLDecoder/decode "UTF-8")))
 
@@ -271,19 +270,43 @@
    Should be used inside with-open to ensure the Writer is properly
    closed."
   [x & opts-vec]
-  (let [
-         opts
-           (merge
-             {:encoding "UTF-8" :pre-compr-buffer true :append false }
-             (apply hash-map opts-vec))
-         _ (sassert WriterOptsSchema opts)
-        ]
-    (-> x
-       (make-raw-output-stream opts)
-       (make-buffered-output-stream (:pre-compr-buff opts))
-       (make-compressed-output-stream opts)
-       (make-writer opts)
-       (make-buffered-writer opts))))
+  (if (instance? java.io.Writer x)
+    x
+    (let [
+          opts
+            (merge
+              {:encoding "UTF-8" :pre-compr-buffer true :append false }
+              (apply hash-map opts-vec))
+          _ (sassert WriterOptsSchema opts)
+          ]
+      (-> x
+        (make-raw-output-stream opts)
+        (make-buffered-output-stream (:pre-compr-buff opts))
+        (make-compressed-output-stream opts)
+        (make-writer opts)
+        (make-buffered-writer opts)))))
+
+(defn ^:private get-ext [ ^String s ]
+  (last (str/split s #"\.")))
+
+(defn ^:private infer-compr-vec [ x ]
+  (case (get-ext (.toString x))
+    "gz" [ :compr "gzip" ]
+    "bz2" [ :compr "bzip2"]
+    "xz"  [ :compr "xz"]
+     [ :compr "none"]))
+
+(defn ^Reader writer-compr [ x & opts-vec ]
+    (if (and
+          (not (contains? (into #{} opts-vec) :compr))
+          (contains?
+             #{ java.net.URL java.net.URI java.io.File java.lang.String}
+             (type x)))
+      (apply writer x (concat opts-vec (infer-compr-vec x)))
+      (apply writer x opts-vec)))
+
+(defn spit-compr [f content & opts-vec]
+  (spit (apply writer-compr f opts-vec) content))
 
 (defn ^OutputStream output-stream
   "Attempts to coerce its argument into an open java.io.OutputStream.
@@ -394,16 +417,6 @@
         (make-compressed-input-stream opts)
         (make-reader opts)
         (make-buffered-reader opts)))))
-
-(defn ^:private get-ext [ ^String s ]
-  (last (str/split s #"\.")))
-
-(defn ^:private infer-compr-vec [ x ]
-  (case (get-ext (.toString x))
-    "gz" [ :compr "gzip" ]
-    "bz2" [ :compr "bzip2"]
-    "xz"  [ :compr "xz"]
-     [ :compr "none"]))
 
 (defn ^Reader reader-compr [ x & opts-vec ]
     (if (and
