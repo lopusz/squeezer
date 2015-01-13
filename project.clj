@@ -1,4 +1,4 @@
-(defproject squeezer "0.1.0-SNAPSHOT"
+(defproject squeezer "0.1.0"
 
   ; GENERAL OPTIONS
 
@@ -13,23 +13,22 @@
   ;; Options used by Java
   ;;; run with assertions enabled
   :jvm-opts ["-ea"]
- 
+
   ; DEPENDENCIES
 
   :dependencies [
     [org.clojure/clojure "1.6.0"]
-    [org.clojure/test.check "0.5.9"]
+    [org.clojure/test.check "0.6.2"]
 
     ;; Runtime assertions
     [pjstadig/assertions "0.1.0"]
-    [prismatic/schema "0.3.0"]
-    [org.apache.commons/commons-compress "1.8.1"] 
+    [prismatic/schema "0.3.3"]
+    [org.apache.commons/commons-compress "1.9"]
     [org.tukaani/xz "1.5"]]
-  
+
   ; PLUGINS + CONFIGURATION
 
-  :plugins [[codox "0.8.10"] 
-            [lein-ancient "0.5.5"]]
+  :plugins [[codox "0.8.10"]]
 
   ;; codox configuration
 
