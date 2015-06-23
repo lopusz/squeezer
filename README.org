@@ -1,8 +1,67 @@
 * squeezer
-  
-  Project description
-  
-* License
+
+  Seamless support for compressed files.
+
+  [[http://clojars.org/squeezer][http://clojars.org/squeezer/latest-version.svg]]
+
+** Usage
+
+  Creating a compressed file is dead simple:
+
+  #+BEGIN_SRC clojure
+  (require '[squeezer.core :as sc])
+  (sc/spit-compr "test.txt.gz" "test 1\ntest 2\ntest 3")
+  #+END_SRC
+
+  You can examine the file in your favourite shell to see that it works.
+  #+BEGIN_SRC sh
+  > file test.txt.gz
+  test.txt.gz: gzip compressed data, from FAT filesystem (MS-DOS, OS/2, NT)
+  #+END_SRC
+
+  You can equally easy ~slurp~ the file back:
+
+  #+BEGIN_SRC clojure
+  (require '[squeezer.core :as sc])
+
+  (sc/slurp-compr "test.txt.gz")
+
+  ;"test 1\ntest 2\ntest 3"
+  #+END_SRC
+
+  The desired compression algorithm is specified on the basis of the
+  extension. ~.gz~ for gzip ~.bz2~ for bzip2 and ~.xz~ for xz are
+  supported. You can override this behaviour by forcing compression
+  using keyword ~:compr~.
+
+  #+BEGIN_SRC clojure
+  ; Do not do that!!
+
+  (sc/spit-compr "test.txt.gz" "test 1\ntest 2\ntest 3" :compr "bzip2")
+  #+END_SRC
+
+  If you do not believe that this works, ask your favourite shell:
+  #+BEGIN_SRC sh
+  > file test.txt.gz
+  test.txt.gz: bzip2 compressed data, block size = 900k
+  #+END_SRC
+
+  Now reading is a pain:
+  #+BEGIN_SRC clojure
+  (sc/slurp-compr "test.txt.gz")
+  ; ZipException Not in GZIP format
+  #+END_SRC
+
+  unless you know what the trick is
+
+  #+BEGIN_SRC clojure
+  (sc/slurp-compr "test.txt.gz" :compr "bzip2")
+  ; "test 1\ntest 2\ntest 3"
+  #+END_SRC
+
+  To make sure the compression algorithm is adjusted correctly, you can use the
+  mime type of the file (detected, e.g., by the library [[https://github.com/michaelklishin/pantomime][pantomime]]).
+
+** License
 
   Distributed under the Eclipse Public License, the same as Clojure.
-
