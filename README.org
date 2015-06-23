@@ -1,5 +1,7 @@
 * squeezer
 
+  [[http://travis-ci.org/lopusz/squeezer][https://api.travis-ci.org/lopusz/squeezer.png?branch=master]]
+
   Seamless support for compressed files.
 
   [[http://clojars.org/squeezer][http://clojars.org/squeezer/latest-version.svg]]
