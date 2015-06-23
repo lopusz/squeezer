@@ -7,3 +7,5 @@
   + *[algs]* Add lz4 compression
 
 * Done
+  + *[gene]* Adding Travis support
+  + *[gene]* Adding description
