@@ -296,7 +296,7 @@
     "xz"  [ :compr "xz"]
      [ :compr "none"]))
 
-(defn ^Reader writer-compr [ x & opts-vec ]
+(defn ^Writer writer-compr [ x & opts-vec ]
     (if (and
           (not (contains? (into #{} opts-vec) :compr))
           (contains?
