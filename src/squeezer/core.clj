@@ -294,16 +294,21 @@
     "gz" [ :compr "gzip" ]
     "bz2" [ :compr "bzip2"]
     "xz"  [ :compr "xz"]
-     [ :compr "none"]))
+    [ :compr "none"]))
 
-(defn ^Writer writer-compr [ x & opts-vec ]
+(defn ^:private infer-compr-and-call
+  "Wraps given `io-f` into compression autodetection mechanism."
+  [ io-f x & opts-vec ]
     (if (and
           (not (contains? (into #{} opts-vec) :compr))
           (contains?
-             #{ java.net.URL java.net.URI java.io.File java.lang.String}
-             (type x)))
-      (apply writer x (concat opts-vec (infer-compr-vec x)))
-      (apply writer x opts-vec)))
+            #{ java.net.URL java.net.URI java.io.File java.lang.String}
+            (type x)))
+      (apply io-f x (concat opts-vec (infer-compr-vec x)))
+      (apply io-f x opts-vec)))
+
+(defn ^Writer writer-compr [ x & opts-vec ]
+  (apply infer-compr-and-call writer x opts-vec))
 
 (defn spit-compr [f content & opts-vec]
   (spit (apply writer-compr f opts-vec) content))
@@ -335,6 +340,9 @@
        (make-buffered-output-stream (:pre-compr-buff opts))
        (make-compressed-output-stream opts)
        (make-buffered-output-stream (:post-compr-buff opts)))))
+
+(defn ^OutputStream output-stream-compr [x & opts-vec]
+  (apply infer-compr-and-call output-stream x opts-vec))
 
 ;; Good notes on buffered stream performance
 ;;
@@ -419,13 +427,7 @@
         (make-buffered-reader opts)))))
 
 (defn ^Reader reader-compr [ x & opts-vec ]
-    (if (and
-          (not (contains? (into #{} opts-vec) :compr))
-          (contains?
-             #{ java.net.URL java.net.URI java.io.File java.lang.String}
-             (type x)))
-      (apply reader x (concat opts-vec (infer-compr-vec x)))
-      (apply reader x opts-vec)))
+  (apply infer-compr-and-call reader x opts-vec))
 
 (defn slurp-compr [x & opts-vec]
   (slurp (apply reader-compr x opts-vec)))
@@ -455,7 +457,7 @@
   (let [
          opts
            (merge
-             {:pre-compr-buff false :post-compr-buff true :append false }
+             {:pre-compr-buffer false :post-compr-buffer true}
              (apply hash-map opts-vec))
           _ (sassert InputStreamOptsSchema opts)
         ]
@@ -464,3 +466,6 @@
        (make-buffered-input-stream (:pre-compr-buffer opts))
        (make-compressed-input-stream opts)
        (make-buffered-input-stream (:post-compr-buffer opts)))))
+
+(defn ^InputStream input-stream-compr [x & opts-vec]
+  (apply infer-compr-and-call input-stream x opts-vec))
