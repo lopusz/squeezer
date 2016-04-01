@@ -1,4 +1,4 @@
-(defproject squeezer "0.2.0"
+(defproject squeezer "0.3.0"
 
   ; GENERAL OPTIONS
 
@@ -9,7 +9,6 @@
   :aot :all
   :omit-source true
 
-  :main squeezer.core
   ;; Options used by Java
   ;;; run with assertions enabled
   :jvm-opts ["-ea"]
@@ -17,13 +16,13 @@
   ; DEPENDENCIES
 
   :dependencies [
-    [org.clojure/clojure "1.6.0"]
-    [org.clojure/test.check "0.6.2"]
+    [org.clojure/clojure "1.8.0"]
+    [org.clojure/test.check "0.9.0"]
 
     ;; Runtime assertions
     [pjstadig/assertions "0.1.0"]
-    [prismatic/schema "0.3.3"]
-    [org.apache.commons/commons-compress "1.9"]
+    [prismatic/schema "1.1.0"]
+    [org.apache.commons/commons-compress "1.10"]
     [org.tukaani/xz "1.5"]]
 
   ; PLUGINS + CONFIGURATION
