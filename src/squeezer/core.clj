@@ -415,7 +415,7 @@
           opts
             (merge
               {:encoding "UTF-8" :pre-compr-buffer true
-               :post-compr-buffer false }
+               :post-compr-buffer true }
               (apply hash-map opts-vec))
           _ (sassert ReaderOptsSchema opts)
         ]
