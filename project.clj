@@ -1,4 +1,4 @@
-(defproject squeezer "0.3.0"
+(defproject squeezer "0.4.0"
 
   ; GENERAL OPTIONS
 
