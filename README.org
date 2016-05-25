@@ -63,6 +63,24 @@
 
   To make sure the compression algorithm is adjusted correctly, you can use the
   mime type of the file (detected, e.g., by the library [[https://github.com/michaelklishin/pantomime][pantomime]]).
+** FAQ
+*** How do I lazily read compressed csv file, record by record?
+
+    It is easy.
+
+    Add  [[https://github.com/davidsantiago/clojure-csv][clojure-csv]] and
+    [[https://github.com/lopusz/squeezer][squeezer]] to your ~project.clj~.
+
+    To read first five lines of your ~big_data.csv.gz~, type in your REPL:
+
+    #+BEGIN_SRC clojure
+    (require '[squeezer.core :as sc] '[clojure-csv :as csv])
+
+    (->> "big_data.csv.gz"
+         sc/reader-compr
+         csv/parse-csv
+         (take 5))
+    #+END_SRC
 
 ** License
 
